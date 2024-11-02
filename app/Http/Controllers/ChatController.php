@@ -55,6 +55,7 @@ class ChatController extends Controller
 
     public function showMessages($id)
     {
+        $selectedChat = null;
         $selectedChat = Chat::with('messages')->find($id);
 
         if (!$selectedChat) {
