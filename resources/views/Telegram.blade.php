@@ -67,18 +67,22 @@
                                             No date
                                         @endif
                                     </p>
-
                                     @php
                                         $unreadCount = $chat->messages->where('sender_id', '!=', auth()->id())->where('seen', false)->count();
+                                        $lastMessage = $chat->messages->where('sender_id', '!=', auth()->id())->last();
                                     @endphp
 
                                     @if ($unreadCount)
                                         <p class="count" id="unread-count-{{ $chat->id }}">{{ $unreadCount }}</p>
                                     @endif
 
-                                    @if ($chat->messages->isNotEmpty())
-                                        <i class="fas fa-check-double read"></i>
+                                    @if ($lastMessage && !$lastMessage->seen)
+                                        <i class="fas fa-check read" id="seen-status-{{ $chat->id }}"></i> <!-- Single check for unread -->
+                                    @elseif ($lastMessage && $lastMessage->seen)
+                                        <i class="fas fa-check-double read" id="seen-status-{{ $chat->id }}"></i> <!-- Double check for read -->
                                     @endif
+
+
                                 </div>
                             </div>
                         </div>
@@ -124,20 +128,18 @@
         </div>
 
         <div class="convHistory userBg" id="messageContainer">
-            <!-- Messages will be dynamically loaded here -->
         </div>
 
         <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
         <script>
-            let loading = false; // Prevent multiple loads when scrolling
-            let isUserAtBottom = true; // Track if user is at the bottom
+            let isUserAtBottom = true;
 
             function loadMessages(chatId) {
                 $.ajax({
                     url: `/chats/${chatId}/messages`,
                     type: 'GET',
                     success: function(data) {
-                        $('#messageContainer').empty(); // Clear existing messages
+                        $('#messageContainer').empty(); // Clear the message container
 
                         data.messages.forEach(function(message) {
                             const msgClass = message.sender_id == {{ auth()->id() }} ? 'messageSent' : 'messageReceived';
@@ -146,17 +148,17 @@
                                 : `<span>${message.message}</span>`;
 
                             const messageHtml = `
-                        <div class="msg ${msgClass}">
-                            ${messageContent}
-                            <span class="timestamp">${new Date(message.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                        </div>
-                    `;
-                            $('#messageContainer').append(messageHtml);
+                    <div class="msg ${msgClass}">
+                        ${messageContent}
+                        <span class="timestamp">${new Date(message.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                    </div>
+                `;
+                            $('#messageContainer').append(messageHtml); // Append new message
                         });
 
-                        // Scroll to the bottom if the user is currently at the bottom
+                        // Check if user is at the bottom before scrolling
                         if (isUserAtBottom) {
-                            $('#messageContainer').scrollTop($('#messageContainer')[0].scrollHeight);
+                            $('#messageContainer').scrollTop($('#messageContainer')[0].scrollHeight); // Scroll to the bottom
                         }
                     },
                     error: function(xhr) {
@@ -165,16 +167,16 @@
                 });
             }
 
+            // Check for new messages periodically
             function checkForNewMessages(chatId) {
                 $.ajax({
                     url: `/chats/${chatId}/messages/unread`,
                     type: 'GET',
                     success: function(data) {
                         if (data.messages.length > 0) {
-                            loadMessages(chatId); // Load new messages
+                            loadMessages(chatId);
                             markMessagesAsSeen(data.messages);
                         }
-                        // Update unread message count regardless of whether there are new messages
                         updateUnreadCount(chatId);
                     },
                     error: function(xhr) {
@@ -182,6 +184,12 @@
                     }
                 });
             }
+
+            // Event listener for scrolling
+            $('#messageContainer').on('scroll', function() {
+                isUserAtBottom = $(this).scrollTop() + $(this).innerHeight() >= this.scrollHeight; // Update bottom status
+            });
+
 
             function markMessagesAsSeen(messages) {
                 messages.forEach(function(message) {
@@ -201,25 +209,36 @@
                 });
             }
 
-
             function updateUnreadCount(chatId) {
+               const tick = false;
                 $.ajax({
-                    url: `/chats/${chatId}/messages/unread/count`, // Ensure this endpoint is correctly set up
+                    url: `/chats/${chatId}/messages/unread/count`,
                     type: 'GET',
                     success: function(data) {
-                        const unreadCount = data.count; // Adjust based on your API response structure
-                        const unreadCountElement = $('#unread-count-' + chatId); // Adjusted to match your ID format
-
+                        const unreadCount = data.count;
+                        const unreadCountElement = $('#unread-count-' + chatId);
+                        const tick = true;
                         if (unreadCount > 0) {
-                            unreadCountElement.text(unreadCount).show(); // Show updated count
+                            unreadCountElement.text(unreadCount).show();
                         } else {
-                            unreadCountElement.hide(); // Hide if no unread messages
+                            unreadCountElement.hide();
                         }
                     },
                     error: function(xhr) {
                         console.error(xhr.responseText);
                     }
                 });
+
+                function markChatAsRead(chatId) {
+                    $.post(`/chats/${chatId}/markAsRead`, {
+                        _token: '{{ csrf_token() }}'
+                    }).done(function(response) {
+                        $('#unread-count-' + chatId).remove(); // Remove unread count display
+                    });
+                }
+
+
+
             }
             <?php
             $servername = "localhost";
@@ -250,11 +269,10 @@
 
             $(document).ready(function() {
                 const chatId = {{ $selectedChat->id }};
-                loadMessages(chatId); // Load initial messages
+                loadMessages(chatId);
 
 
 
-                // Check for new messages every 500 milliseconds
                 setInterval(() => {
                     checkForNewMessages(chatId);
                     @foreach($chatIds as $chatId)
@@ -262,12 +280,11 @@
                     @endforeach
                 }, 5000);
 
-                // Track if the user is at the bottom of the chat container
                 $('#messageContainer').on('scroll', function() {
                     isUserAtBottom = $(this).scrollTop() + $(this).innerHeight() >= this.scrollHeight;
 
                     if ($(this).scrollTop() === 0 && !loading) {
-                        loading = true; // Prevent multiple requests
+                        loading = true;
                         $.ajax({
                             url: `/chats/${chatId}/messages/more`,
                             type: 'GET',
@@ -1827,6 +1844,9 @@
                 console.error('Error fetching user status:', error);
             });
     }, 5000);
+
+
+
 
 </script>
 

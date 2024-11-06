@@ -89,22 +89,7 @@
     </div>
 
     <div class="stickersList" style="display: none;">
-        <button class="pick" data-sticker-url="https://media.giphy.com/media/3o7btY1wv76clYiwTe/giphy.gif">
-            <img src="https://media.giphy.com/media/3o7btY1wv76clYiwTe/giphy.gif" alt="Sticker 1" style="width: 40px; height: 40px;">
-        </button>
-        <button class="pick" data-sticker-url="https://media.giphy.com/media/l3q2K5jinSpB7R4J2/giphy.gif">
-            <img src="https://media.giphy.com/media/l3q2K5jinSpB7R4J2/giphy.gif" alt="Sticker 2" style="width: 40px; height: 40px;">
-        </button>
-        <button class="pick" data-sticker-url="https://media.giphy.com/media/3o7btNr40wHzzEtmVi/giphy.gif">
-            <img src="https://media.giphy.com/media/3o7btNr40wHzzEtmVi/giphy.gif" alt="Sticker 3" style="width: 40px; height: 40px;">
-        </button>
-        <button class="pick" data-sticker-url="https://media.giphy.com/media/l4FGwHE6nNfyPVKb6/giphy.gif">
-            <img src="https://media.giphy.com/media/l4FGwHE6nNfyPVKb6/giphy.gif" alt="Sticker 4" style="width: 40px; height: 40px;">
-        </button>
-        <button class="pick" data-sticker-url="https://media.giphy.com/media/xT5LMOYHSKQy6WwH4U/giphy.gif">
-            <img src="https://media.giphy.com/media/xT5LMOYHSKQy6WwH4U/giphy.gif" alt="Sticker 5" style="width: 40px; height: 40px;">
-        </button>
-        <!-- Add more stickers as needed -->
+
     </div>
 
     <!-- Other Tools -->
@@ -114,10 +99,13 @@
         </button>
         <button class="toolButtons audio">
             <i class="fas fa-microphone" style="position: absolute;" id="MicEmoji"></i>
+            <div class="" id="recordingStatus"></div>
             <i class="fa-sharp fa-solid fa-paper-plane fa-rotate-90" style="transform: rotate(40deg); color: #4c84dc; font-size: 20px; opacity: 0;" id="SendEmoji"></i>
         </button>
     </div>
 </div>
+
+
 
 <!-- JavaScript for Interactivity -->
 <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
@@ -228,4 +216,69 @@
 
 <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
 
+<script>
+    let mediaRecorder;
+    let audioChunks = [];
+    let isRecording = false; // Flag to track recording state
+    const recordingStatus = document.getElementById('recordingStatus');
+    let Micemoji = document.getElementById('MicEmoji');
 
+   Micemoji.addEventListener('click', async () => {
+        if (!isRecording) {
+            // Start recording
+            recordingStatus.textContent = "Recording...";
+            console.log("Starting recording...");
+
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                mediaRecorder = new MediaRecorder(stream);
+                audioChunks = []; // Reset audio chunks for new recording
+
+                mediaRecorder.ondataavailable = (event) => {
+                    audioChunks.push(event.data);
+                    console.log("Audio chunk available: ", event.data);
+                };
+
+                mediaRecorder.onstop = async () => {
+                    const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+                    console.log("Recording stopped, sending audio...");
+
+                    // Send the audio to the server
+                    const formData = new FormData();
+                    formData.append('audio', audioBlob, 'recording.webm'); // Change filename if needed
+
+                    try {
+                        const response = await fetch('http://127.0.0.1:8000/microphone', { // Your server URL
+                            method: 'POST',
+                            body: formData,
+                        });
+
+                        if (!response.ok) {
+                            throw new Error('Network response was not ok');
+                        }
+                        const result = await response.json();
+                        console.log("Audio sent successfully: ", result);
+                        recordingStatus.textContent = "Audio sent successfully!";
+                    } catch (error) {
+                        console.error("Error sending audio: ", error);
+                        recordingStatus.textContent = "Error sending audio.";
+                    }
+                };
+
+                mediaRecorder.start();
+                isRecording = true; // Set recording state to true
+                console.log("MediaRecorder started.");
+            } catch (error) {
+                console.error("Error accessing microphone: ", error);
+                recordingStatus.textContent = "Error accessing microphone.";
+            }
+        } else {
+            // Stop recording
+            recordingStatus.textContent = "Stopping recording...";
+            console.log("Stopping recording...");
+            mediaRecorder.stop();
+            isRecording = false; // Reset recording state
+        }
+    });
+
+</script>

@@ -1,21 +1,20 @@
 <?php
 
 use App\Http\Controllers\ChatController;
+use App\Http\Controllers\MessageController;
 use App\Http\Controllers\UserController;
 use App\Http\Middleware\CheckChatMember;
 use Illuminate\Support\Facades\Route;
 use  Pusher\Pusher;
 use Laravel\Fortify\Http\Controllers\AuthenticatedSessionController;
 
-Route::get('/', function () {
-    return view('welcome');
-});
+
 
 Route::middleware([
     'auth:sanctum',
     config('jetstream.auth_session'),
     'verified',
-])->group(function () {    Route::get('/dashboard', [ChatController::class, 'index']);
+])->group(function () {    Route::get('/', [ChatController::class, 'index']);
 })->name('dashboard');
 
 Route::get('/chats/{id}', [ChatController::class, 'showMessages'])->name('messages.index')->middleware(CheckChatMember::class);
@@ -45,4 +44,7 @@ Route::put('/profile/picture', [UserController::class, 'updatePicture'])->name('
 Route::get('/chats/{id}', [ChatController::class, 'showMessages'])->name('messages.index');
 
 Route::get('/chats/{id}/messages/unread/count', [ChatController::class, 'getUnreadCount']);
+
+Route::post('/chats/{chat}/markAsRead', [ChatController::class, 'markAsRead'])->name('chats.markAsRead');
+
 

@@ -15,14 +15,19 @@ class ChatController extends Controller
     public function index()
     {
         $chats = Chat::with(['userOne', 'userTwo', 'messages' => function ($query) {
-            $query->orderBy('created_at', 'desc'); // Order messages by latest
+            $query->orderBy('created_at', 'desc');
         }])
             ->where('user_one', Auth::id())
             ->orWhere('user_two', Auth::id())
             ->get();
+        $users = User::all(); // Adjust this query based on your needs
 
-        return view('Telegram', compact('chats'));
+        return view('dashboard', compact('chats', 'users'));
     }
+
+    // In ChatController or the relevant controller
+
+
 
 
     public function show($id)
@@ -55,6 +60,9 @@ class ChatController extends Controller
 
     public function showMessages($id)
     {
+
+        $chat = Chat::findOrFail($id);
+
         $selectedChat = null;
         $selectedChat = Chat::with('messages')->find($id);
 
@@ -64,8 +72,12 @@ class ChatController extends Controller
 
         $chats = Chat::with('userOne', 'userTwo')->get();
 
+        $messages = Message::where('chat_id', $chat->id)->get();
+
+
         return view('Telegram', [
             'chats' => $chats,
+            'messages' => $messages,
             'selectedChat' => $selectedChat,
         ]);
     }
@@ -312,6 +324,21 @@ class ChatController extends Controller
 
         return response()->json(['success' => true]);
     }
+
+    public function markAsRead($chatId)
+    {
+        Message::where('chat_id', $chatId)
+            ->where('receiver_id', auth()->id())
+            ->where('seen', false)
+            ->update(['seen' => true]);
+
+        return response()->json(['status' => 'success']);
+    }
+
+
+
+
+
 
 
 }
