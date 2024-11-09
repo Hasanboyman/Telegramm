@@ -42,15 +42,21 @@
                                 <div class="image" style="background: url('{{ $profilePictureUrl }}') no-repeat center; background-size: cover;"></div>
 
                                 <div class="chatInfo_p">
-                                    <p class="name">{{ $chat->name }}</p>
-                                    <p class="message">
+                                    @if ($chat)
+                                        @php
+                                            $otherUser = $chat->userOne->id === auth()->id() ? $chat->userTwo : $chat->userOne;
+                                        @endphp
+                                        <span>{{ $otherUser->name }}</span>
+                                    @endif                                    <p class="message">
                                         @if ($chat->messages->isNotEmpty())
                                             @php
                                                 $lastMessage = $chat->messages->last(); // Get the latest message
                                             @endphp
                                             @if ($lastMessage->image_url)
                                                 Picture 🖼️
-                                            @else
+                                                @elseif($lastMessage->audio_url)
+                                                    Voice message
+                                                @else
                                                 {{ Str::limit($lastMessage->message, 10, '...') }}
                                             @endif
                                         @else
@@ -73,7 +79,7 @@
                                     @endphp
 
                                     @if ($unreadCount)
-                                        <p class="count" id="unread-count-{{ $chat->id }}">{{ $unreadCount }}</p>
+                                        <p class="count" id="unread-count-{{ $chat->id }}">{{ $unreadCount }}2a</p>
                                     @endif
 
                                     @if ($lastMessage && !$lastMessage->seen)
@@ -139,35 +145,95 @@
                     url: `/chats/${chatId}/messages`,
                     type: 'GET',
                     success: function(data) {
-                        $('#messageContainer').empty(); // Clear the message container
+                        $("#messageContainer").empty();
 
                         data.messages.forEach(function(message) {
-                            const msgClass = message.sender_id == {{ auth()->id() }} ? 'messageSent' : 'messageReceived';
-                            const messageContent = message.image_url
-                                ? `<img src="../storage/${message.image_url}" alt="Image" class="message-image">`
-                                : `<span>${message.message}</span>`;
+                            const msgClass = message.sender_id === {{ auth()->id() }} ? 'messageSent' : 'messageReceived';
+                            let messageHtml = '';
 
-                            const messageHtml = `
+                            // Check if the message has audio
+                            if (message.audio_url) {
+                                messageHtml = `
+                    <div class="audio ${msgClass}">
+                        <audio id="audio-${message.id}" controls controlsList="nodownload" preload="auto">
+                            <source src="../storage/${message.audio_url}" type="audio/webm">
+                            Your browser does not support the audio element.
+                        </audio>
+                        <div class="audio-overlay" id="audioOverlay-${message.id}">Loading...</div>
+                        <div class="reverce">
+                            <span calss="readStatus">${message.seen !== 1 ? '<i class="fa-solid fa-check"></i>':'<i class="fa-solid fa-check-double"></i>'}</span>
+                            <span class="timestamp">${new Date(message.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit',hourCycle: 'h23'  })}</span>
+                        </div>                    </div>`;
+                            }
+                            else if (message.image_url) {
+                                messageHtml = `
                     <div class="msg ${msgClass}">
-                        ${messageContent}
-                        <span class="timestamp">${new Date(message.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                    </div>
-                `;
-                            $('#messageContainer').append(messageHtml); // Append new message
+                        <img src="../storage/${message.image_url}" alt="Image" class="message-image">
+                        <div class="reverce">
+                            <span calss="readStatus">${message.seen !== 1 ? '<i class="fa-solid fa-check"></i>':'<i class="fa-solid fa-check-double"></i>'}</span>
+                            <span class="timestamp">${new Date(message.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit',hourCycle: 'h23'  })}</span>
+                        </div>                    </div>`;
+                            }
+                            else if (message.video_url) {
+                                messageHtml = `
+                    <div class="video ${msgClass}">
+                        <div>
+                        <video controls oncopy="false"  width="320" height="240" controlsList="nodownload">
+                            <source src="../storage/${message.video_url}" type="video/mp4">
+                            Your browser does not support the video element.
+                        </video>
+
+                        <div class="reverce">
+                            <span calss="readStatus">${message.seen !== 1 ? '<i class="fa-solid fa-check"></i>':'<i class="fa-solid fa-check-double"></i>'}</span>
+                            <span class="timestamp">${new Date(message.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit',hourCycle: 'h23'  })}</span>
+                        </div>                    </div>
+                        </div>`;
+                            }
+                            else if (message.file_url) {
+                                const fileName = message.file_url.split('/').pop();  // Extract the file name from the URL
+                                messageHtml = `
+                    <div class="msg ${msgClass}">
+                        <a href="../storage/${message.file_url}" class="message-file" download="${fileName}">${fileName}</a>
+                        <div class="reverce">
+                            <span calss="readStatus">${message.seen !== 1 ? '<i class="fa-solid fa-check"></i>':'<i class="fa-solid fa-check-double"></i>'}</span>
+                            <span class="timestamp">${new Date(message.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit',hourCycle: 'h23'  })}</span>
+                        </div>
+                        </div>`;
+                            }
+                            else {
+                                messageHtml = `
+                    <div class="msg ${msgClass}">
+                        <span>${message.message}</span>
+                        <div class="reverce">
+                            <span calss="readStatus">${message.seen !== 1 ? '<i class="fa-solid fa-check"></i>':'<i class="fa-solid fa-check-double"></i>'}</span>
+                            <span class="timestamp">${new Date(message.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit',hourCycle: 'h23'  })}</span>
+                        </div>
+                    </div>`;
+                            }
+
+                            $('#messageContainer').append(messageHtml);
+                        });
+
+                        // After appending all messages, add event listeners to each audio element
+                        data.messages.forEach(function(message) {
+                            if (message.audio_url) {
+                                const audioElement = document.getElementById(`audio-${message.id}`);
+                                const overlay = document.getElementById(`audioOverlay-${message.id}`);
+                            }
                         });
 
                         // Check if user is at the bottom before scrolling
                         if (isUserAtBottom) {
-                            $('#messageContainer').scrollTop($('#messageContainer')[0].scrollHeight); // Scroll to the bottom
+                            $('#messageContainer').scrollTop($('#messageContainer')[0].scrollHeight);
                         }
                     },
                     error: function(xhr) {
-                        console.error(xhr.responseText);
+                        console.error("Error loading messages:", xhr.responseText);
                     }
                 });
             }
 
-            // Check for new messages periodically
+
             function checkForNewMessages(chatId) {
                 $.ajax({
                     url: `/chats/${chatId}/messages/unread`,
@@ -291,7 +357,7 @@
                             success: function(data) {
                                 if (data.messages.length > 0) {
                                     data.messages.forEach(function(message) {
-                                        const msgClass = message.sender_id == {{ auth()->id() }} ? 'messageSent' : 'messageReceived';
+                                        const msgClass = message.sender_id === {{ auth()->id() }} ? 'messageSent' : 'messageReceived';
                                         const messageContent = message.image_url
                                             ? `<img src="../storage/${message.image_url}" alt="Image" class="message-image">`
                                             : `<span>${message.message}</span>`;
@@ -335,6 +401,13 @@
                 border-radius: 8px;
                 margin-top: 5px;
             }
+
+            .reverce:not(span)>span{
+                display: flex;
+                float: right;
+                color: #aaa;
+            }
+
         </style>
 
 
@@ -414,6 +487,8 @@
         color: #FFFFFF;
         background: transparent;
     }
+
+
 
     .dark-theme .go-back {
         background: #419fd9;
@@ -946,9 +1021,6 @@
         transition: all 0.2s ease-in-out;
     }
 
-    #checkNight, #deskNotif, #showSName, #showPreview, #playSounds {
-        display: none;
-    }
 
     .toggleTracer:checked ~ .check {
         background: #419fd9;
@@ -1083,7 +1155,7 @@
     }
 
     .chatInfo .image {
-        width: 55px;
+        width: 84px;
         height: 55px;
         background-size: cover;
         border-radius: 100%;
@@ -1100,6 +1172,8 @@
     }
 
     .chatInfo .message {
+        display: flex;
+        width: 109px;
         color: #9B9B9B;
         clear: left;
         margin-top: 7px;
@@ -1306,26 +1380,139 @@
         min-width: 100px;
         max-width: 45%;
         height: auto;
-        padding: 15px;
-        padding-bottom: 25px;
-        margin: 20px 15px;
-        margin-bottom: 0px;
+        padding: 15px 15px 32px;
+        margin: 20px 15px 0;
         background: #FFF;
         border-radius: 7px;
         clear: both;
+    }
+
+    .msg:has(span)>div{
+        position: absolute;
+        bottom: 4px;
+        right: 7px;
+    }
+
+    .audio:has(audio) {
+        background-color: #4c84dc;
+        border-radius: 7px 7px 0 0;
+        display: flex;
+        align-items: center;
+        margin: 15px 15px;
+        clear: both;
+    }
+
+    .audio audio {
+        background: #ffffff;
+        border-radius:  7px 7px 0 0;
+        border: black;
+        display: block;
+        clear: both;
+    }
+
+    .audio > .timestamp,
+    .audio > .readStatus{
+
+        display: block;
+        position: relative;
+        right: 48px;
+    }
+
+    .audio:has(audio)>.reverce{
+        right: 20px;
+        position: relative;
+        display: flex;
+        flex-direction: row-reverse;
+        gap: 10px;
+    }
+
+    .audio-overlay {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        color: white;
+        font-size: 14px;
+        background-color: rgba(0, 0, 0, 0.5);
+        padding: 5px;
+        border-radius: 5px;
+    }
+
+    audio {
+        position: relative;
+    }
+
+    .video{
+        position: relative;
+        width: auto;
+        min-width: 100px;
+        max-width: 45%;
+        height: auto;
+        padding: 15px 15px 25px;
+        margin: 20px 15px 0;
+        background: #FFF;
+        border-radius: 7px;
+        clear: both;
+    }
+
+    .messageSent:has(video){
+        background: transparent;
+        padding: 15px 0 25px;
+    }
+
+
+    .messageSent:has(img){
+        background: transparent;
+        padding: 15px 0 25px;
+    }
+
+
+    .messageSent:has(img) >.reverce> .timestamp{
+        position: absolute;
+        color: #fff;
+        background: rgba(0, 0, 0, .35);
+        border-radius: 95px 0 0 100px;
+        right: 36px;
+        padding: 3px;
+        bottom: 38px;
+    }
+
+    .messageSent:has(img) >.reverce> span>i{
+        position: absolute;
+        color: #fff;
+        background: rgba(0, 0, 0, .35);
+        border-radius: 0  20px  20px 0;
+        right: 14px;
+        padding: 4px;
+        bottom: 38px;
+    }
+
+
+
+
+
+    audio::-webkit-media-controls-enclosure {
+        border-radius: 0;
+        background-color: rgb(138, 194, 194);
+    }
+    audio::-webkit-media-controls-mute-button {
+        display: none !important;
+    }
+
+    audio::-webkit-media-controls-volume-slider {
+        display: none !important;
+        position: relative;
     }
 
     .msg:nth-last-child(1) {
         margin-bottom: 20px;
     }
 
-    .msg .timestamp {
-        display: block;
-        position: absolute;
-        right: 10px;
-        bottom: 6px;
-        color: #AAA;
-        user-select: none;
+    .msg>div:has(span){
+        gap: 10px;
+        display: flex;
+        flex-direction: row-reverse;
+        color: #aaa;
     }
 
     .messageReceived {
@@ -1377,15 +1564,22 @@
     .dark-theme .replyBar>form>label:hover{
         background: #333;
         display: flex;
-        justify-content: center;
+        justify-content: space-between;
         align-items: center;
     }
 
+    .dark-theme .replyBar>form>label{
+        width: 169px;
+        display: flex;
+        justify-content: space-evenly;
+    }
 
 
-    .replyBar .fa-paperclip {
+
+    .replyBar .emoji {
         font-size: 32px;
     }
+
 
     .replyBar .replyMessage {
         width: calc(100% - 220px);
@@ -1459,17 +1653,13 @@
     .stickerList .pick {
         width: 80px;
         height: 80px;
-        background: transparent;
-        background-repeat: no-repeat;
-        background-position: center;
+        background: transparent no-repeat center;
         background-size: 65%;
         transition: all 0.15s ease-in-out;
     }
 
     .stickerList .pick:hover {
-        background: #DDD;
-        background-repeat: no-repeat;
-        background-position: center;
+        background: #DDD no-repeat center;
         background-size: 65%;
     }
 
@@ -1495,6 +1685,21 @@
     }
     .user-item:hover {
         background-color: #ccc;
+    }
+
+
+    audio::-webkit-media-controls-panel {
+        background-color: #4c84dc;
+        color: #ffffff;
+    }
+
+    audio::-webkit-media-controls-enclosure {
+        background-color: rgb(138, 194, 194);
+    }
+
+    .messageReceived.audio audio::-webkit-media-controls-panel{
+        background-color: #1c1c1c;
+        color: #ffffff;
     }
 
     @media screen and (max-width: 1180px) {
@@ -1620,13 +1825,7 @@
             document.querySelector(".menu").style.left = "-320px";
         });
 
-        document.querySelector(".deskNotif").addEventListener("click", function () {
-            const elements = [".showSName", ".showPreview", ".playSounds"];
-            elements.forEach(function (selector) {
-                const elem = document.querySelector(selector);
-                elem.style.display = (elem.style.display === "none" || !elem.style.display) ? "block" : "none";
-            });
-        });
+
 
 
 
@@ -1844,9 +2043,6 @@
                 console.error('Error fetching user status:', error);
             });
     }, 5000);
-
-
-
 
 </script>
 

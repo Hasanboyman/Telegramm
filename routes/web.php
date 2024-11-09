@@ -47,4 +47,8 @@ Route::get('/chats/{id}/messages/unread/count', [ChatController::class, 'getUnre
 
 Route::post('/chats/{chat}/markAsRead', [ChatController::class, 'markAsRead'])->name('chats.markAsRead');
 
+Route::get('/media/{id}', [ChatController::class, 'showMedia'])->name('media.show');
+
+
+
 

@@ -9,6 +9,7 @@ use App\Models\User;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
 
 class ChatController extends Controller
 {
@@ -95,26 +96,63 @@ class ChatController extends Controller
         }
 
         $request->validate([
-            'message' => 'required_without:image_url|string',
-            'image_url' => 'nullable|image|max:2048',
+            'image_url' => 'nullable|image|mimes:jpeg,png,jpg,gif',
+            'video' => 'nullable|max:20480',
+            'file' => 'nullable|mimes:pdf,doc,docx,txt,zip|max:2048',
         ]);
+
 
         $message = new Message();
         $message->chat_id = $chatId;
         $message->sender_id = auth()->id();
         $message->message = $request->input('message');
 
-        if ($request->hasFile('image_url')) {
-            $imagePath = $request->file('image_url')->store('messages', 'public');
-            $message->image_url = $imagePath;
+
+        if ($request->hasFile('audio')) {
+            $audio = $request->file('audio');
+            $audioPath = $audio->store('audio_files', 'public');
+            $message->audio_url = $audioPath;
+        }
+
+        if ($request->hasFile('media')) {
+            $file = $request->file('media');
+            $mimeType = $file->getMimeType();
+
+            // Determine file type and set appropriate storage directory and model attribute
+            if (in_array($mimeType, ['image/jpeg', 'image/png', 'image/jpg', 'image/gif'])) {
+                // Store as an image
+                $image_url = $file->store('images', 'public');
+                $message->image_url = $image_url;
+
+            } elseif (in_array($mimeType, ['video/mp4', 'video/webm'])) {  // Corrected MIME types
+                // Store as a video
+                $video_url = $file->store('videos', 'public');
+                $message->video_url = $video_url;
+            }
+        }
+
+
+
+
+        if ($request->hasFile('file')) {
+            $file = $request->file('file');
+            $file_url = $file->store('files', 'public');
+            $message->file_url = $file_url;
         }
 
         if ($message->save()) {
-            broadcast(new MessageSent($message))->toOthers();
-            return redirect()->back()->with('success', 'Message sent');
+            return response()->json([
+                'success' => true,
+                'message' => 'File uploaded successfully!',
+                'video_url' => $video_url ?? null,  // Ensure that $video_url is defined
+            ]);
         } else {
-            return redirect()->back()->with('success', 'Message not sent');
+            return response()->json([
+                'success' => false,
+                'message' => 'Message not sent',
+            ], 500);
         }
+
     }
 
     public function createChat(Request $request)
@@ -279,9 +317,8 @@ class ChatController extends Controller
 
     public function getUnreadMessages($id)
     {
-        // Fetch new messages for the chat that are not seen by the user
         $newMessages = Message::where('chat_id', $id)
-            ->where('sender_id', '!=', auth()->id()) // Get messages sent by other users
+            ->where('sender_id', '!=', auth()->id())
             ->where('seen', false) // Assuming you have a 'seen' column
             ->with('sender') // Include the sender relation
             ->get();

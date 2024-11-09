@@ -17,6 +17,8 @@ return new class extends Migration
             $table->unsignedBigInteger('sender_id');
             $table->text('message')->nullable();
             $table->text('image_url')->nullable();
+            $table->text('video_url')->nullable();
+            $table->text('audio_url')->nullable();
             $table->timestamps();
 
             $table->foreign('chat_id')->references('id')->on('chats')->onDelete('cascade');
